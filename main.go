@@ -3,6 +3,8 @@ package main
 import (
 	"bufio"
 	"crypto/tls"
+	"encoding/csv"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -17,12 +19,40 @@ import (
 
 var showsuccess bool = false
 var successlist []string
+var outputPath string
+var outputFormat string
+
+// Add this struct definition
+type Result struct {
+	URL      string   `json:"url"`
+	Found    int      `json:"found"`
+	FileList []string `json:"files"`
+}
 
 func main() {
 	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	address := flag.String("url", "", "url address https://google.com")
 	showsuccessresult := flag.Bool("v", false, "show success result only")
+	output := flag.String("o", "", "output file path (e.g., /path/to/output.json)")
+	format := flag.String("f", "json", "output format (json or csv)")
 	flag.Parse()
+
+	if *output != "" {
+		outputPath = *output
+		outputFormat = strings.ToLower(*format)
+
+		// Validate format
+		if outputFormat != "json" && outputFormat != "csv" {
+			log.Fatalf("Invalid format. Use 'json' or 'csv'")
+		}
+
+		// Create directory if it doesn't exist
+		dir := filepath.Dir(outputPath)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			log.Fatalf("Failed to create output directory: %v", err)
+		}
+	}
+
 	if *showsuccessresult {
 		showsuccess = true
 	}
@@ -67,11 +97,21 @@ func main() {
 		}
 
 	}
+
+	if outputPath != "" {
+		if outputFormat == "json" {
+			saveJSON(*address, successlist)
+		} else if outputFormat == "csv" {
+			saveCSV(*address, successlist)
+		}
+	}
+
 	fmt.Printf("%d %s\n", len(successlist), "Found")
 	for _, v := range successlist {
 		println(v)
 	}
 }
+
 func Unique(slice []string) []string {
 	// create a map with all the values as key
 	uniqMap := make(map[string]struct{})
@@ -86,6 +126,7 @@ func Unique(slice []string) []string {
 	}
 	return uniqSlice
 }
+
 func pathinurl(urlrecive string) (list []string) {
 	response, err := http.Get(urlrecive)
 	if err != nil {
@@ -181,6 +222,7 @@ func pathinurl(urlrecive string) (list []string) {
 	return patharray
 
 }
+
 func readToDisplayUsingFile1(f *os.File) (line []string) {
 	defer f.Close()
 	reader := bufio.NewReader(f)
@@ -188,6 +230,7 @@ func readToDisplayUsingFile1(f *os.File) (line []string) {
 	lines := strings.Split(string(contents), "\n")
 	return lines
 }
+
 func checkurl(url string) {
 	resp, err := http.Head(url)
 	if err != nil {
@@ -216,4 +259,44 @@ func checkurl(url string) {
 
 	}
 
+}
+
+func saveJSON(url string, files []string) {
+	result := Result{
+		URL:      url,
+		Found:    len(files),
+		FileList: files,
+	}
+
+	jsonData, err := json.MarshalIndent(result, "", "    ")
+	if err != nil {
+		log.Fatalf("Failed to marshal JSON: %v", err)
+	}
+
+	if err := ioutil.WriteFile(outputPath, jsonData, 0644); err != nil {
+		log.Fatalf("Failed to write output file: %v", err)
+	}
+}
+
+func saveCSV(url string, files []string) {
+	file, err := os.Create(outputPath)
+	if err != nil {
+		log.Fatalf("Failed to create CSV file: %v", err)
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	// Write header
+	if err := writer.Write([]string{"URL", "File"}); err != nil {
+		log.Fatalf("Failed to write CSV header: %v", err)
+	}
+
+	// Write data
+	for _, f := range files {
+		if err := writer.Write([]string{url, f}); err != nil {
+			log.Fatalf("Failed to write CSV record: %v", err)
+		}
+	}
 }
