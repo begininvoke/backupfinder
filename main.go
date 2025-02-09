@@ -60,13 +60,24 @@ func main() {
 		println("Please Set url via --url or -h for help")
 		return
 	}
-	ex, err := os.Executable()
+	filepathS := "backup_finder_list.txt"
+	appPath, err := os.Executable()
 	if err != nil {
-		panic(err)
+		fmt.Printf("Failed to get application path: %v\n", err)
+		return
 	}
-	exPath := filepath.Dir(ex)
-
-	file, err := os.Open(exPath + "/backup_finder_list.txt")
+	appDir := filepath.Dir(appPath)
+	defaultLocalPath := filepath.Join(appDir, filepathS)
+	defaultGlobalPath := "/usr/local/bin/" + filepathS
+	fmt.Printf("Checking for  in %s\n and %s\n", appDir, defaultGlobalPath)
+	// Check if the file exists in the application's directory
+	configfilepath := defaultLocalPath
+	if _, err := os.Stat(configfilepath); os.IsNotExist(err) {
+		// If not found in the app directory, fall back to /usr/local/bin
+		fmt.Printf(" not found in %s, trying %s\n", appDir, defaultGlobalPath)
+		configfilepath = defaultGlobalPath
+	}
+	file, err := os.Open(configfilepath)
 
 	if err != nil {
 		fmt.Printf("%s", err)
